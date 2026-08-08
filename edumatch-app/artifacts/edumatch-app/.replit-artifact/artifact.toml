@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "EduMatch AI"
+version = "1.0.0"
+id = "artifacts/edumatch-app"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 22053
+
+[services.development]
+run = "pnpm --filter @workspace/edumatch-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/edumatch-app", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/edumatch-app", "run", "serve" ]
+
+[services.env]
+PORT = "22053"
+BASE_PATH = "/"

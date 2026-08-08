@@ -1,0 +1,148 @@
+.application-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.application-stat {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 18px rgba(80, 50, 120, 0.04);
+}
+
+.application-stat span {
+  color: #958da0;
+  font-size: 13px;
+}
+
+.application-stat h2 {
+  margin: 8px 0 0;
+  color: #30283a;
+}
+
+.application-toolbar {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-radius: 14px 14px 0 0;
+  padding: 15px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.application-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.application-tab {
+  border: none;
+  background: transparent;
+  padding: 9px 15px;
+  border-radius: 8px;
+  color: #81788b;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.application-tab:hover,
+.active-application-tab {
+  background: #eee7ff;
+  color: #6848a8;
+}
+
+.application-search {
+  border: 1px solid #e4ddec;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9b93a3;
+}
+
+.application-search input {
+  border: none;
+  outline: none;
+  width: 220px;
+  font-size: 13px;
+}
+
+.application-table-container {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  overflow-x: auto;
+}
+
+.application-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.application-table-container thead {
+  background: #faf8fc;
+}
+
+.application-table-container th,
+.application-table-container td {
+  text-align: left;
+  padding: 15px 18px;
+  border-top: 1px solid #f1edf5;
+  font-size: 13px;
+}
+
+.application-table-container th {
+  color: #81788b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.application-status {
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.application-status.active {
+  background: #e5f7ee;
+  color: #24945d;
+}
+
+.application-status.pending {
+  background: #fff4dc;
+  color: #c48716;
+}
+
+.application-status.inactive {
+  background: #fde8ea;
+  color: #c94d59;
+}
+
+.application-no-data {
+  text-align: center;
+  padding: 35px;
+  color: #9991a3;
+}
+
+@media (max-width: 900px) {
+  .application-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .application-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .application-search input {
+    width: 100%;
+  }
+}

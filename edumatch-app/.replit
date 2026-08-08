@@ -1,0 +1,24 @@
+modules = ["nodejs-20"]
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 3001
+
+[[ports]]
+localPort = 22053
+externalPort = 3000
+
+[[ports]]
+localPort = 22054
+externalPort = 3002
+
+[workflows]
+runButton = "Project"

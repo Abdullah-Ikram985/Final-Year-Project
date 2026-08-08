@@ -1,0 +1,306 @@
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 27px;
+  color: #30283a;
+}
+
+.page-header p {
+  margin-top: 7px;
+  color: #958da0;
+}
+
+.add-btn {
+  border: none;
+  background: #6848a8;
+  color: white;
+  padding: 11px 18px;
+  border-radius: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-btn:hover {
+  background: #573795;
+}
+
+
+/* Statistics */
+
+.recruiter-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.recruiter-stat {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 18px rgba(80, 50, 120, 0.04);
+}
+
+.stat-label {
+  color: #958da0;
+  font-size: 13px;
+}
+
+.recruiter-stat h2 {
+  margin: 8px 0 0;
+  color: #30283a;
+}
+
+.active-number {
+  color: #28a568 !important;
+}
+
+.pending-number {
+  color: #e5a329 !important;
+}
+
+.inactive-number {
+  color: #dc5963 !important;
+}
+
+
+/* Toolbar */
+
+.recruiter-toolbar {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-radius: 14px 14px 0 0;
+  padding: 15px 18px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recruiter-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 9px 15px;
+  border-radius: 8px;
+  color: #81788b;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.tab:hover {
+  background: #f5f0fc;
+  color: #6848a8;
+}
+
+.active-tab {
+  background: #eee7ff;
+  color: #6848a8;
+  font-weight: 600;
+}
+
+
+/* Search */
+
+.search-box {
+  border: 1px solid #e4ddec;
+  border-radius: 8px;
+  padding: 8px 12px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #9b93a3;
+}
+
+.search-box input {
+  border: none;
+  outline: none;
+  width: 210px;
+  font-size: 13px;
+}
+
+
+/* Table */
+
+.table-container {
+  background: white;
+  border: 1px solid #eee8f5;
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  background: #faf8fc;
+}
+
+th {
+  text-align: left;
+  padding: 15px 18px;
+  color: #81788b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+td {
+  padding: 15px 18px;
+  border-top: 1px solid #f1edf5;
+  color: #625a6b;
+  font-size: 13px;
+}
+
+tbody tr:hover {
+  background: #fcfaff;
+}
+
+
+/* Recruiter */
+
+.recruiter-name {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.recruiter-avatar {
+  width: 39px;
+  height: 39px;
+
+  border-radius: 50%;
+
+  background: #eee7ff;
+  color: #6848a8;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-weight: 700;
+}
+
+.recruiter-name strong {
+  display: block;
+  color: #38313f;
+}
+
+.recruiter-name small {
+  display: block;
+  margin-top: 3px;
+  color: #aaa3b2;
+}
+
+
+/* Status */
+
+.status-badge {
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-badge.active {
+  background: #e5f7ee;
+  color: #24945d;
+}
+
+.status-badge.pending {
+  background: #fff4dc;
+  color: #c48716;
+}
+
+.status-badge.inactive {
+  background: #fde8ea;
+  color: #c94d59;
+}
+
+
+/* Actions */
+
+.action-buttons {
+  display: flex;
+  gap: 7px;
+}
+
+.action-buttons button {
+  width: 31px;
+  height: 31px;
+
+  border: none;
+  border-radius: 7px;
+
+  cursor: pointer;
+}
+
+.view-btn {
+  background: #eee7ff;
+}
+
+.edit-btn {
+  background: #e8f1ff;
+}
+
+.delete-btn {
+  background: #fde8ea;
+}
+
+.action-buttons button:hover {
+  transform: translateY(-1px);
+}
+
+
+/* No data */
+
+.no-data {
+  text-align: center;
+  padding: 35px;
+  color: #9991a3;
+}
+
+
+/* Responsive */
+
+@media (max-width: 1000px) {
+  .recruiter-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .page-header {
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .recruiter-toolbar {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+
+  .recruiter-tabs {
+    overflow-x: auto;
+  }
+
+  .search-box input {
+    width: 100%;
+  }
+}

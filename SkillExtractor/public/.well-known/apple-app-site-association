@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "36R3VCWWUJ.com.nodemobileapp",
+        "paths": [
+          "/group/*"
+        ]
+      }
+    ]
+  }
+}
