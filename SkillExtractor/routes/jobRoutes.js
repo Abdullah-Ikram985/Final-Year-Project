@@ -64,11 +64,11 @@ router.post(
   authController.restrictTo('candidate'),
   jobController.applyToJob,
 );
-// Delete job by ID
+// Delete job by ID — allow recruiter and admin
 router.delete(
   '/deleteJobById/:id',
   authController.protect,
-  authController.restrictTo('recruiter'),
+  authController.restrictTo('recruiter', 'admin'),
   jobController.deleteJobById,
 );
 

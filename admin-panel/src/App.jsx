@@ -1,8 +1,4 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AdminLayout from "./layouts/AdminLayout";
 
@@ -15,11 +11,23 @@ import Login from "./pages/Login";
 import "./App.css";
 import "./pages/Shared.css";
 
+const RequireAuth = ({ children }) => {
+  const token = localStorage.getItem("adminToken");
+  if (!token) return <Navigate to="/login" replace />;
+  return children;
+};
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<AdminLayout />}>
+        <Route
+          element={
+            <RequireAuth>
+              <AdminLayout />
+            </RequireAuth>
+          }
+        >
           <Route path="/" element={<Dashboard />} />
           <Route path="/recruiters" element={<Recruiters />} />
           <Route path="/candidates" element={<Candidates />} />
@@ -28,6 +36,7 @@ function App() {
         </Route>
 
         <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
