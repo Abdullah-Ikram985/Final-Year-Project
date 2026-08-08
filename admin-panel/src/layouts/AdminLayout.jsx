@@ -1,6 +1,23 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { logoutAdmin } from "../api/client";
 
 const AdminLayout = () => {
+  const navigate = useNavigate();
+  const token = localStorage.getItem("adminToken");
+  const adminUser = (() => {
+    try { return JSON.parse(localStorage.getItem("adminUser") || "null"); } catch { return null; }
+  })();
+
+  useEffect(() => {
+    if (!token) navigate("/login", { replace: true });
+  }, [token, navigate]);
+
+  const handleLogout = () => {
+    logoutAdmin();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div className="admin-layout">
       <aside className="sidebar">
@@ -13,9 +30,7 @@ const AdminLayout = () => {
           <NavLink
             to="/"
             end
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <span>📊</span>
             Dashboard
@@ -23,9 +38,7 @@ const AdminLayout = () => {
 
           <NavLink
             to="/candidates"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <span>👤</span>
             Candidates
@@ -33,9 +46,7 @@ const AdminLayout = () => {
 
           <NavLink
             to="/recruiters"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <span>👥</span>
             Recruiters
@@ -43,9 +54,7 @@ const AdminLayout = () => {
 
           <NavLink
             to="/jobs"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <span>💼</span>
             Jobs
@@ -53,9 +62,7 @@ const AdminLayout = () => {
 
           <NavLink
             to="/applications"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <span>📄</span>
             Applications
@@ -63,10 +70,17 @@ const AdminLayout = () => {
         </nav>
 
         <div className="sidebar-bottom">
-          <NavLink to="/login" className="nav-item">
-            <span>🔐</span>
-            Login
-          </NavLink>
+          {token ? (
+            <button onClick={handleLogout} className="nav-item" style={{ width: "100%", border: "none", cursor: "pointer", background: "transparent", textAlign: "left" }}>
+              <span>🚪</span>
+              Logout
+            </button>
+          ) : (
+            <NavLink to="/login" className="nav-item">
+              <span>🔐</span>
+              Login
+            </NavLink>
+          )}
         </div>
       </aside>
 
@@ -79,10 +93,9 @@ const AdminLayout = () => {
 
           <div className="admin-profile">
             <div className="profile-avatar">A</div>
-
             <div>
-              <strong>Admin</strong>
-              <small>Administrator</small>
+              <strong>{adminUser?.name || "Admin"}</strong>
+              <small>{adminUser?.email || "Administrator"}</small>
             </div>
           </div>
         </header>
