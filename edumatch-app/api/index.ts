@@ -1,4 +1,4 @@
-export const BASE_URL = 'https://kena-uninstrumental-maryln.ngrok-free.dev';
+export const BASE_URL = 'http://192.168.1.12:8000';
 export const API_VERSION = '/api/v1/';
 
 export const API_ROUTES = {
