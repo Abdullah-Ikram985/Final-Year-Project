@@ -1,6 +1,8 @@
 const Job = require('../models/jobSchema');
 const RecruiterProfile = require('../models/recruiterProfileSchema');
 const CandidateProfile = require('../models/candidateProfileSchema');
+const MockInterview = require('../models/mockInterviewSchema');
+const Notification = require('../models/notificationSchema');
 const checkAsync = require('../utils/checkAsync');
 const AppError = require('../utils/appError');
 
@@ -23,6 +25,9 @@ const normalizeStatus = (status) => {
   if (!status) return 'Closed';
   const lower = status.toLowerCase();
   if (lower === 'active') return 'Active';
+  if (lower === 'draft') return 'Draft';
+  if (lower === 'pending') return 'Pending';
+  if (lower === 'rejected') return 'Rejected';
   return 'Closed';
 };
 
@@ -49,7 +54,7 @@ exports.createJob = checkAsync(async (req, res, next) => {
     jobType,
     skills,
     description,
-    jobStatus: 'Active',
+    jobStatus: 'Pending',
   });
 
   try {
@@ -63,6 +68,7 @@ exports.createJob = checkAsync(async (req, res, next) => {
 
   res.status(201).json({
     status: 'success',
+    message: 'Job submitted successfully and is awaiting admin approval.',
     data: { job: newJob },
   });
 });
@@ -75,7 +81,9 @@ exports.getAllJobsOfRecruiter = checkAsync(async (req, res, next) => {
   if (!recruiterProfile)
     return next(new AppError('Recruiter profile not found', 404));
 
-  const jobs = await Job.find({ createdBy: recruiterProfile._id });
+  const jobs = await Job.find({ createdBy: recruiterProfile._id }).sort({
+    createdAt: -1,
+  });
 
   res.status(200).json({
     status: 'success',
@@ -90,10 +98,39 @@ exports.updateJobStatus = checkAsync(async (req, res, next) => {
   const { jobId } = req.params;
   const { jobStatus } = req.body;
 
-  const job = await Job.findById(jobId).select('+embedding');
-  if (!job) return next(new AppError('No job found with that ID', 404));
+  const recruiterProfile = await RecruiterProfile.findOne({
+    user: req.user.id,
+  });
+  if (!recruiterProfile)
+    return next(new AppError('Recruiter profile not found', 404));
 
-  job.jobStatus = normalizeStatus(jobStatus);
+  const job = await Job.findOne({
+    _id: jobId,
+    createdBy: recruiterProfile._id,
+  }).select('+embedding');
+
+  if (!job)
+    return next(new AppError('No job found with that ID or unauthorized', 404));
+
+  const targetStatus = normalizeStatus(jobStatus);
+
+  // Recruiter cannot self-approve a pending or rejected job
+  if (
+    targetStatus === 'Active' &&
+    (job.jobStatus === 'Pending' ||
+      job.jobStatus === 'pending' ||
+      job.jobStatus === 'Rejected' ||
+      job.jobStatus === 'rejected')
+  ) {
+    return next(
+      new AppError(
+        'Pending or Rejected jobs cannot be set to Active without admin approval.',
+        400,
+      ),
+    );
+  }
+
+  job.jobStatus = targetStatus;
 
   if (job.jobStatus === 'Active') {
     try {
@@ -129,10 +166,25 @@ exports.getJobById = checkAsync(async (req, res, next) => {
 });
 
 exports.getAllJobs = checkAsync(async (req, res, next) => {
-  const jobs = await Job.find().populate({
-    path: 'createdBy',
-    populate: { path: 'user', select: 'name email' },
-  });
+  const filter = {};
+
+  if (req.query.status) {
+    if (req.query.status === 'all' || req.query.status === 'All') {
+      // Return all jobs (e.g. for admin)
+    } else {
+      filter.jobStatus = req.query.status;
+    }
+  } else {
+    // Default candidate/public listing: ONLY return Active jobs
+    filter.jobStatus = { $in: ['Active', 'active'] };
+  }
+
+  const jobs = await Job.find(filter)
+    .populate({
+      path: 'createdBy',
+      populate: { path: 'user', select: 'name email' },
+    })
+    .sort({ createdAt: -1 });
 
   res.status(200).json({
     status: 'success',
@@ -152,7 +204,10 @@ exports.applyToJob = checkAsync(async (req, res, next) => {
     return next(new AppError('Candidate profile not found', 404));
 
   // 2. Find the job
-  const job = await Job.findById(jobId);
+  const job = await Job.findById(jobId).populate({
+    path: 'createdBy',
+    populate: { path: 'user', select: 'name email fcmToken' },
+  });
   if (!job) return next(new AppError('Job not found', 404));
 
   // 3. Only active jobs
@@ -160,6 +215,22 @@ exports.applyToJob = checkAsync(async (req, res, next) => {
     return next(
       new AppError('This job is no longer accepting applications', 400),
     );
+
+  // 3.5 Check whether candidate completed Mock Interview for this specific job
+  const completedInterview = await MockInterview.findOne({
+    candidate: req.user.id,
+    job: jobId,
+    status: 'completed',
+  });
+
+  if (!completedInterview) {
+    return next(
+      new AppError(
+        'Please complete the AI Mock Interview before applying to this job.',
+        403,
+      ),
+    );
+  }
 
   // 4. Duplicate check — now using subdocument structure
   const alreadyApplied = job.applicants.some(
@@ -190,6 +261,107 @@ exports.applyToJob = checkAsync(async (req, res, next) => {
       status: 'pending',
     });
     await candidateProfile.save();
+  }
+
+  // 7. Create notification for Candidate
+  try {
+    const candidateMsg = `Your application for "${job.title}" has been submitted.`;
+    await Notification.create({
+      recipient: req.user._id,
+      type: 'application_submitted',
+      title: 'Application Submitted',
+      message: candidateMsg,
+      jobId: job._id,
+      isRead: false,
+    });
+
+    if (req.user.fcmToken) {
+      const sendPushNotification = require('../utils/sendPush');
+      await sendPushNotification(
+        req.user.fcmToken,
+        'Application Submitted',
+        candidateMsg,
+      );
+    }
+  } catch (notifErr) {
+    console.warn('Candidate application notification failed:', notifErr.message);
+  }
+
+  // 8. Create / Consolidate notification for Recruiter (Job owner) - Grouped by Job
+  try {
+    const recruiterUserId = job.createdBy?.user?._id || job.createdBy?.user;
+    if (recruiterUserId) {
+      const candidateName = req.user.name || 'A candidate';
+
+      // Find existing application_received notification for this job & recruiter
+      const existingNotif = await Notification.findOne({
+        recipient: recruiterUserId,
+        type: 'application_received',
+        jobId: job._id,
+      }).sort({ createdAt: -1 });
+
+      if (existingNotif) {
+        // Collect existing candidate names
+        const names =
+          existingNotif.candidateNames && existingNotif.candidateNames.length > 0
+            ? [...existingNotif.candidateNames]
+            : [existingNotif.message ? existingNotif.message.split(' ')[0] : 'Candidate'];
+
+        if (!names.includes(candidateName)) {
+          names.push(candidateName);
+        }
+
+        const count = (existingNotif.applicantCount || 1) + 1;
+        const profileIds =
+          existingNotif.candidateProfiles && existingNotif.candidateProfiles.length > 0
+            ? [...existingNotif.candidateProfiles, candidateProfile._id]
+            : [existingNotif.candidateProfileId, candidateProfile._id].filter(Boolean);
+
+        existingNotif.candidateNames = names;
+        existingNotif.applicantCount = count;
+        existingNotif.candidateProfiles = profileIds;
+        existingNotif.candidateProfileId = candidateProfile._id;
+        existingNotif.title = job.title;
+        existingNotif.message = `${count} new applicants applied for ${job.title}`;
+        existingNotif.isRead = false;
+        existingNotif.createdAt = new Date();
+        await existingNotif.save();
+
+        // Consolidate: Remove any other duplicate notifications for this job
+        await Notification.deleteMany({
+          recipient: recruiterUserId,
+          type: 'application_received',
+          jobId: job._id,
+          _id: { $ne: existingNotif._id },
+        });
+      } else {
+        // Create initial notification for this job
+        await Notification.create({
+          recipient: recruiterUserId,
+          type: 'application_received',
+          title: job.title,
+          message: `${candidateName} applied`,
+          jobId: job._id,
+          candidateProfileId: candidateProfile._id,
+          candidateProfiles: [candidateProfile._id],
+          candidateNames: [candidateName],
+          applicantCount: 1,
+          isRead: false,
+        });
+      }
+
+      const pushMsg = `New application for "${job.title}" from ${candidateName}.`;
+      if (job.createdBy?.user?.fcmToken) {
+        const sendPushNotification = require('../utils/sendPush');
+        await sendPushNotification(
+          job.createdBy.user.fcmToken,
+          job.title,
+          pushMsg,
+        );
+      }
+    }
+  } catch (notifErr) {
+    console.warn('Recruiter application notification failed:', notifErr.message);
   }
 
   res.status(200).json({
@@ -245,6 +417,63 @@ exports.updateApplicationStatus = checkAsync(async (req, res, next) => {
     { _id: candidateProfileId, 'appliedJobs.job': jobId },
     { $set: { 'appliedJobs.$.status': status } },
   );
+
+  // 4. Send notification to Candidate
+  try {
+    const candidateProfile = await CandidateProfile.findById(
+      candidateProfileId,
+    ).populate('user', 'name email fcmToken');
+
+    const candidateUserId =
+      candidateProfile?.user?._id || candidateProfile?.user;
+
+    if (candidateUserId) {
+      let notifTitle = 'Application Status Updated';
+      let notifMessage = `Your application status for "${job.title}" has been updated to "${status}".`;
+      let notifType = 'application_status_updated';
+
+      if (status === 'shortlisted') {
+        notifTitle = 'Shortlisted 🎉';
+        notifMessage = `🎉 You have been shortlisted for "${job.title}".`;
+        notifType = 'application_shortlisted';
+      } else if (status === 'rejected') {
+        notifTitle = 'Application Update';
+        notifMessage = `Your application for "${job.title}" was not selected.`;
+        notifType = 'application_rejected';
+      } else if (status === 'reviewed') {
+        notifTitle = 'Application Reviewed';
+        notifMessage = `Your application for "${job.title}" has been reviewed.`;
+        notifType = 'application_reviewed';
+      } else if (status === 'hired') {
+        notifTitle = 'Application Accepted 🎉';
+        notifMessage = `🎉 Congratulations! You have been hired for "${job.title}".`;
+        notifType = 'application_status_updated';
+      }
+
+      await Notification.create({
+        recipient: candidateUserId,
+        type: notifType,
+        title: notifTitle,
+        message: notifMessage,
+        jobId: job._id,
+        isRead: false,
+      });
+
+      if (candidateProfile?.user?.fcmToken) {
+        const sendPushNotification = require('../utils/sendPush');
+        await sendPushNotification(
+          candidateProfile.user.fcmToken,
+          notifTitle,
+          notifMessage,
+        );
+      }
+    }
+  } catch (notifErr) {
+    console.warn(
+      'Candidate status update notification failed:',
+      notifErr.message,
+    );
+  }
 
   res.status(200).json({
     status: 'success',
@@ -303,8 +532,12 @@ exports.getJobApplicants = checkAsync(async (req, res, next) => {
   // ── Build job embedding text once for comparison ──────────────────────────
   const jobWithEmbedding = await Job.findById(jobId).select('+embedding');
 
+  const validApplicants = (job.applicants || []).filter(
+    (entry) => entry.candidate,
+  );
+
   const applicantsWithMatch = await Promise.all(
-    job.applicants.map(async (entry) => {
+    validApplicants.map(async (entry) => {
       const candidate = entry.candidate;
 
       let matchPercent = null;
@@ -327,25 +560,53 @@ exports.getJobApplicants = checkAsync(async (req, res, next) => {
         console.warn('Match score failed for candidate:', err.message);
       }
 
+      // Fetch AI Mock Interview status for this candidate on this job
+      let aiInterview = {
+        completed: false,
+        overallReadinessScore: null,
+      };
+      if (candidate?.user?._id || candidate?.user) {
+        const candidateUserId = candidate.user._id || candidate.user;
+        const interview = await MockInterview.findOne({
+          candidate: candidateUserId,
+          job: jobId,
+          status: 'completed',
+        }).select('overallReadinessScore breakdown status completedAt');
+
+        if (interview) {
+          aiInterview = {
+            completed: true,
+            overallReadinessScore: interview.overallReadinessScore,
+            breakdown: interview.breakdown,
+            status: interview.status,
+            completedAt: interview.completedAt,
+          };
+        }
+      }
+
       return {
         _id: entry._id,
         status: entry.status,
         appliedAt: entry.appliedAt,
         candidate,
+        jobId: job._id,
+        jobTitle: job.title,
+        jobDepartment: job.department,
         matchPercent,
         matchLabel,
+        aiInterview,
       };
     }),
   );
 
-  // Sort by matchPercent descending — highest match first
+  // Sort newest application first (appliedAt descending)
   applicantsWithMatch.sort(
-    (a, b) => (b.matchPercent ?? 0) - (a.matchPercent ?? 0),
+    (a, b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0),
   );
 
   res.status(200).json({
     status: 'success',
-    totalApplicants: job.applicants.length,
+    totalApplicants: applicantsWithMatch.length,
     data: { applicants: applicantsWithMatch },
   });
 });
@@ -371,27 +632,29 @@ exports.candiadteAppliedJobs = checkAsync(async (req, res, next) => {
   const candidateText = buildCandidateText(candidateProfile);
   const candidateEmbedding = await generateEmbedding(candidateText);
 
-  const appliedJobs = populated.appliedJobs.map((entry) => {
-    const job = entry.job;
+  const appliedJobs = populated.appliedJobs
+    .filter((entry) => entry.job)
+    .map((entry) => {
+      const job = entry.job;
 
-    // Calculate match percent if embedding exists
-    let matchPercent = null;
-    if (job.embedding && job.embedding.length > 0) {
-      const score = cosineSimilarity(candidateEmbedding, job.embedding);
-      matchPercent = Math.round(score * 100 * 10) / 10;
-    }
+      // Calculate match percent if embedding exists
+      let matchPercent = null;
+      if (job.embedding && job.embedding.length > 0) {
+        const score = cosineSimilarity(candidateEmbedding, job.embedding);
+        matchPercent = Math.round(score * 100 * 10) / 10;
+      }
 
-    // Remove embedding from response — frontend doesn't need it
-    const { embedding, ...jobWithoutEmbedding } = job.toObject();
+      // Remove embedding from response — frontend doesn't need it
+      const { embedding, ...jobWithoutEmbedding } = job.toObject();
 
-    return {
-      job: jobWithoutEmbedding,
-      appliedAt: entry.appliedAt,
-      status: entry.status,
-      matchPercent, // ← now included
-      matchLabel: getMatchLabel(matchPercent ?? 0),
-    };
-  });
+      return {
+        job: jobWithoutEmbedding,
+        appliedAt: entry.appliedAt,
+        status: entry.status,
+        matchPercent, // ← now included
+        matchLabel: getMatchLabel(matchPercent ?? 0),
+      };
+    });
 
   res.status(200).json({
     status: 'success',
@@ -412,9 +675,20 @@ exports.checkApplicationStatus = checkAsync(async (req, res, next) => {
     (entry) => entry.job.toString() === jobId,
   );
 
+  const completedInterview = await MockInterview.findOne({
+    candidate: req.user.id,
+    job: jobId,
+    status: 'completed',
+  });
+
   res.status(200).json({
     status: 'success',
-    data: { hasApplied },
+    data: {
+      hasApplied,
+      hasCompletedMockInterview: !!completedInterview,
+      mockInterviewId: completedInterview?._id || null,
+      readinessScore: completedInterview?.overallReadinessScore || null,
+    },
   });
 });
 
@@ -452,17 +726,15 @@ exports.getRecommendedJobs = checkAsync(async (req, res) => {
     const candidateText = buildCandidateText(profile);
     const candidateEmbedding = await generateEmbedding(candidateText);
 
-    // ─── FIX: Fetch ALL jobs (both Active and Closed), not just Active.
-    // We score every job, then split into active (fully shown) and
-    // closed (shown as disabled). Both must pass the 60% threshold.
-    const allJobs = await Job.find()
+    // Fetch ONLY Active jobs for candidates
+    const allJobs = await Job.find({ jobStatus: { $in: ['Active', 'active'] } })
       .select('+embedding')
       .populate('createdBy', 'name email')
       .lean();
 
-    console.log(`[Recommended] Total jobs in DB: ${allJobs.length}`);
+    console.log(`[Recommended] Total active jobs in DB: ${allJobs.length}`);
     console.log(
-      `[Recommended] Jobs with embeddings: ${allJobs.filter((j) => j.embedding?.length > 0).length}`,
+      `[Recommended] Active jobs with embeddings: ${allJobs.filter((j) => j.embedding?.length > 0).length}`,
     );
 
     if (allJobs.length === 0) {
@@ -496,21 +768,12 @@ exports.getRecommendedJobs = checkAsync(async (req, res) => {
           matchLabel: getMatchLabel(matchPercent),
         };
       })
-      // Keep jobs above 60% threshold regardless of status
+      // Keep jobs above 60% threshold
       .filter((job) => job.matchPercent > 60)
-      // Active jobs first, then closed — within each group sort by match %
-      .sort((a, b) => {
-        const aActive = a.jobStatus === 'Active' ? 1 : 0;
-        const bActive = b.jobStatus === 'Active' ? 1 : 0;
-        if (bActive !== aActive) return bActive - aActive;
-        return b.matchPercent - a.matchPercent;
-      });
+      .sort((a, b) => b.matchPercent - a.matchPercent);
 
     console.log(
-      `[Recommended] Jobs passing 60% threshold: ${scoredJobs.length}`,
-    );
-    console.log(
-      `[Recommended] Active: ${scoredJobs.filter((j) => j.jobStatus === 'Active').length}, Closed: ${scoredJobs.filter((j) => j.jobStatus !== 'Active').length}`,
+      `[Recommended] Active jobs passing 60% threshold: ${scoredJobs.length}`,
     );
 
     res.status(200).json({
@@ -536,6 +799,18 @@ exports.jobDetail = checkAsync(async (req, res, next) => {
     return res.status(404).json({
       status: 'fail',
       message: 'Job not found',
+    });
+  }
+
+  // If candidate is requesting a non-active job, block it
+  if (
+    req.user?.role === 'candidate' &&
+    job.jobStatus !== 'Active' &&
+    job.jobStatus !== 'active'
+  ) {
+    return res.status(404).json({
+      status: 'fail',
+      message: 'Job not found or not available',
     });
   }
 
@@ -602,7 +877,10 @@ exports.getRecruiterDashboardStats = checkAsync(async (req, res, next) => {
 
   const jobs = await Job.find({ createdBy: recruiterProfile._id });
 
-  const activeJobs = jobs.filter((j) => j.jobStatus === 'Active').length;
+  const activeJobs = jobs.filter((j) => j.jobStatus === 'Active' || j.jobStatus === 'active').length;
+  const pendingJobs = jobs.filter((j) => j.jobStatus === 'Pending' || j.jobStatus === 'pending').length;
+  const rejectedJobs = jobs.filter((j) => j.jobStatus === 'Rejected' || j.jobStatus === 'rejected').length;
+  const closedJobs = jobs.filter((j) => j.jobStatus === 'Closed' || j.jobStatus === 'closed').length;
 
   // Per-job applicant breakdown
   const jobBreakdown = jobs.map((job) => ({
@@ -632,6 +910,9 @@ exports.getRecruiterDashboardStats = checkAsync(async (req, res, next) => {
     status: 'success',
     data: {
       activeJobs,
+      pendingJobs,
+      rejectedJobs,
+      closedJobs,
       totalCandidates,
       totalShortlisted,
       totalHired,
@@ -653,11 +934,34 @@ exports.getAllRecruiterCandidates = checkAsync(async (req, res, next) => {
     populate: { path: 'user', select: 'name email imageUrl' },
   });
 
-  // Flatten all applicants across all jobs, attach job info
+  // Flatten all applicants across all jobs, attach job info and aiInterview
   const allApplicants = [];
 
   for (const job of jobs) {
     for (const entry of job.applicants) {
+      let aiInterview = {
+        completed: false,
+        overallReadinessScore: null,
+      };
+      if (entry.candidate?.user?._id || entry.candidate?.user) {
+        const candidateUserId = entry.candidate.user._id || entry.candidate.user;
+        const interview = await MockInterview.findOne({
+          candidate: candidateUserId,
+          job: job._id,
+          status: 'completed',
+        }).select('overallReadinessScore breakdown status completedAt');
+
+        if (interview) {
+          aiInterview = {
+            completed: true,
+            overallReadinessScore: interview.overallReadinessScore,
+            breakdown: interview.breakdown,
+            status: interview.status,
+            completedAt: interview.completedAt,
+          };
+        }
+      }
+
       allApplicants.push({
         _id: entry._id,
         status: entry.status,
@@ -668,13 +972,193 @@ exports.getAllRecruiterCandidates = checkAsync(async (req, res, next) => {
         jobDepartment: job.department,
         matchPercent: null,
         matchLabel: null,
+        aiInterview,
       });
     }
   }
+
+  // Sort newest application first (appliedAt descending)
+  allApplicants.sort(
+    (a, b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0),
+  );
 
   res.status(200).json({
     status: 'success',
     totalCandidates: allApplicants.length,
     data: { applicants: allApplicants },
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN ENDPOINTS (Job Approval / Rejection)
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.getPendingJobs = checkAsync(async (req, res, next) => {
+  const jobs = await Job.find({
+    jobStatus: { $in: ['Pending', 'pending'] },
+  })
+    .populate({
+      path: 'createdBy',
+      populate: { path: 'user', select: 'name email role' },
+    })
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    status: 'success',
+    totalJobs: jobs.length,
+    data: { jobs },
+  });
+});
+
+exports.getAdminJobs = checkAsync(async (req, res, next) => {
+  const filter = {};
+  if (
+    req.query.status &&
+    req.query.status !== 'All' &&
+    req.query.status !== 'all'
+  ) {
+    filter.jobStatus = req.query.status;
+  }
+
+  const jobs = await Job.find(filter)
+    .populate({
+      path: 'createdBy',
+      populate: { path: 'user', select: 'name email role' },
+    })
+    .populate('approvedBy', 'name email')
+    .populate('rejectedBy', 'name email')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    status: 'success',
+    totalJobs: jobs.length,
+    data: { jobs },
+  });
+});
+
+exports.approveJob = checkAsync(async (req, res, next) => {
+  const { jobId } = req.params;
+
+  const job = await Job.findById(jobId).populate({
+    path: 'createdBy',
+    populate: { path: 'user', select: 'name email fcmToken' },
+  });
+
+  if (!job) return next(new AppError('No job found with that ID', 404));
+
+  if (job.jobStatus === 'Active') {
+    return next(new AppError('Job is already approved and active', 400));
+  }
+
+  job.jobStatus = 'Active';
+  job.approvedBy = req.user._id;
+  job.approvedAt = new Date();
+  job.rejectionReason = '';
+
+  // Regenerate/ensure embedding
+  try {
+    const jobText = buildJobText(job);
+    job.embedding = await generateEmbedding(jobText);
+  } catch (err) {
+    console.warn('Embedding generation skipped on approval:', err.message);
+  }
+
+  await job.save();
+
+  // Create notification for recruiter
+  try {
+    const recruiterUserId = job.createdBy?.user?._id || job.createdBy?.user;
+    if (recruiterUserId) {
+      await Notification.create({
+        recipient: recruiterUserId,
+        type: 'job_approved',
+        title: 'Job Approved',
+        message: `Your job "${job.title}" has been approved and is now live.`,
+        jobId: job._id,
+        isRead: false,
+      });
+
+      // Attempt push notification if FCM available
+      if (job.createdBy?.user?.fcmToken) {
+        const sendPushNotification = require('../utils/sendPush');
+        await sendPushNotification(
+          job.createdBy.user.fcmToken,
+          'Job Approved',
+          `Your job "${job.title}" has been approved and is now live.`,
+        );
+      }
+    }
+  } catch (notifErr) {
+    console.warn('Notification creation failed on approval:', notifErr.message);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Job approved successfully',
+    data: { job },
+  });
+});
+
+exports.rejectJob = checkAsync(async (req, res, next) => {
+  const { jobId } = req.params;
+  const { reason } = req.body;
+
+  const job = await Job.findById(jobId).populate({
+    path: 'createdBy',
+    populate: { path: 'user', select: 'name email fcmToken' },
+  });
+
+  if (!job) return next(new AppError('No job found with that ID', 404));
+
+  if (job.jobStatus === 'Rejected') {
+    return next(new AppError('Job is already rejected', 400));
+  }
+
+  job.jobStatus = 'Rejected';
+  job.rejectedBy = req.user._id;
+  job.rejectedAt = new Date();
+  job.rejectionReason =
+    reason || 'Your job posting does not meet our platform requirements.';
+
+  await job.save();
+
+  // Create notification for recruiter
+  try {
+    const recruiterUserId = job.createdBy?.user?._id || job.createdBy?.user;
+    if (recruiterUserId) {
+      const message = job.rejectionReason
+        ? `Your job "${job.title}" has been rejected.\nReason: ${job.rejectionReason}`
+        : `Your job "${job.title}" has been rejected.`;
+
+      await Notification.create({
+        recipient: recruiterUserId,
+        type: 'job_rejected',
+        title: 'Job Rejected',
+        message,
+        jobId: job._id,
+        isRead: false,
+      });
+
+      // Attempt push notification if FCM available
+      if (job.createdBy?.user?.fcmToken) {
+        const sendPushNotification = require('../utils/sendPush');
+        await sendPushNotification(
+          job.createdBy.user.fcmToken,
+          'Job Rejected',
+          message,
+        );
+      }
+    }
+  } catch (notifErr) {
+    console.warn(
+      'Notification creation failed on rejection:',
+      notifErr.message,
+    );
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Job rejected successfully',
+    data: { job },
   });
 });

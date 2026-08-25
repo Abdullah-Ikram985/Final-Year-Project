@@ -11,6 +11,8 @@ const jobRouter = require('./routes/jobRoutes');
 const candidateRouter = require('./routes/candidateRoutes');
 const recruiterRouter = require('./routes/recruiterRoutes');
 const resumeRouter = require('./routes/resumeRoutes');
+const notificationRouter = require('./routes/notificationRoutes');
+const mockInterviewRouter = require('./routes/mockInterviewRoutes');
 
 const firebase = require('./firebase/index');
 
@@ -33,6 +35,8 @@ app.use('/api/v1/jobs', jobRouter);
 app.use('/api/v1/resume', resumeRouter);
 app.use('/api/v1/candidate', candidateRouter);
 app.use('/api/v1/recruiter', recruiterRouter);
+app.use('/api/v1/notifications', notificationRouter);
+app.use('/api/v1/mock-interviews', mockInterviewRouter);
 
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 

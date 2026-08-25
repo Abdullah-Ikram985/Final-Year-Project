@@ -34,5 +34,8 @@ export const getJobStatusClass = (status = "") => {
 
   if (normalized === "active") return "active";
   if (normalized === "closed") return "inactive";
+  if (normalized === "rejected") return "rejected";
+  if (normalized === "pending") return "pending";
+  if (normalized === "draft") return "draft";
   return "pending";
 };

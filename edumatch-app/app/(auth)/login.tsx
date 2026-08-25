@@ -308,6 +308,21 @@ export default function LoginScreen() {
             </LinearGradient>
           </Pressable>
 
+          {isRegisterOnly && mode === 'register' && (
+            <TouchableOpacity
+              style={styles.switchToSignInBtn}
+              onPress={() => {
+                setMode('signin');
+                setError('');
+              }}
+            >
+              <Text style={styles.switchToSignInText}>
+                Already have an account?{' '}
+                <Text style={styles.switchToSignInTextBold}>Sign in</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
+
         </View>
 
         <Text style={styles.terms}>
@@ -430,6 +445,21 @@ const styles = StyleSheet.create({
   eyeBtn: { padding: 4 },
   forgotBtn: { alignSelf: 'flex-end' },
   forgotText: { fontSize: 13, color: '#7c3aed', fontFamily: 'Inter_500Medium' },
+  switchToSignInBtn: {
+    alignSelf: 'center',
+    marginTop: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  switchToSignInText: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontFamily: 'Inter_400Regular',
+  },
+  switchToSignInTextBold: {
+    color: '#7c3aed',
+    fontFamily: 'Inter_600SemiBold',
+  },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',

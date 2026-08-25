@@ -2,6 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
+  ArrowLeft,
+  Bot,
   Briefcase,
   CheckCircle,
   Clock,
@@ -12,7 +14,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -54,6 +56,11 @@ interface Applicant {
   };
   matchPercent?: number;
   matchLabel?: string;
+  aiInterview?: {
+    completed: boolean;
+    overallReadinessScore?: number | null;
+    status?: string;
+  };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -146,15 +153,25 @@ export default function CandidatesScreen() {
   const [statusModal, setStatusModal] = useState<Applicant | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // Clear stale state whenever jobId changes
+  useEffect(() => {
+    setApplicants([]);
+    setLoading(true);
+  }, [jobId]);
+
   // ─── Fetch ────────────────────────────────────────────────────────────────
   const fetchApplicants = useCallback(
     async (silent = false) => {
-      if (!jobId) return;
       if (!silent) setLoading(true);
       setError(null);
       try {
-        const res = await jobApplicantsService.getApplicants(jobId);
-        setApplicants(res.data.applicants ?? []);
+        if (jobId) {
+          const res = await jobApplicantsService.getApplicants(jobId);
+          setApplicants(res.data?.applicants ?? []);
+        } else {
+          const res = await allRecruiterCandidatesService.getCandidates();
+          setApplicants(res.data?.applicants ?? []);
+        }
       } catch (e: any) {
         setError(e?.response?.data?.message || 'Failed to load applicants');
       } finally {
@@ -163,7 +180,7 @@ export default function CandidatesScreen() {
     },
     [jobId],
   );
- 
+
   useFocusEffect(
     useCallback(() => {
       fetchApplicants();
@@ -204,9 +221,15 @@ export default function CandidatesScreen() {
   ) => {
     setStatusModal(null);
     setUpdatingId(applicant._id);
+    const targetJobId = jobId || (applicant as any).jobId;
+    if (!targetJobId) {
+      Alert.alert('Error', 'Cannot identify the job for this applicant');
+      setUpdatingId(null);
+      return;
+    }
     try {
       await updateApplicantStatusService.updateStatus(
-        jobId,
+        targetJobId,
         applicant.candidate._id,
         newStatus,
       );
@@ -223,8 +246,18 @@ export default function CandidatesScreen() {
     }
   };
 
-  // ─── Filter ───────────────────────────────────────────────────────────────
-  const filtered = applicants.filter((a) => {
+  // ─── Filter & Sort (Newest Applicant First) ──────────────────────────────
+  const jobSpecificApplicants = jobId
+    ? applicants.filter((a) => a.jobId && String(a.jobId) === String(jobId))
+    : applicants;
+
+  const sortedApplicants = [...jobSpecificApplicants].sort((a, b) => {
+    const timeA = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
+    const timeB = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  const filtered = sortedApplicants.filter((a) => {
     const name = a.candidate?.user?.name ?? '';
     const matchesSearch =
       !search ||
@@ -241,12 +274,12 @@ export default function CandidatesScreen() {
   });
 
   const counts = {
-    All: applicants.length,
-    Pending: applicants.filter((a) => a.status === 'pending').length,
-    Reviewed: applicants.filter((a) => a.status === 'reviewed').length,
-    Shortlisted: applicants.filter((a) => a.status === 'shortlisted').length,
-    Hired: applicants.filter((a) => a.status === 'hired').length,
-    Rejected: applicants.filter((a) => a.status === 'rejected').length,
+    All: sortedApplicants.length,
+    Pending: sortedApplicants.filter((a) => a.status === 'pending').length,
+    Reviewed: sortedApplicants.filter((a) => a.status === 'reviewed').length,
+    Shortlisted: sortedApplicants.filter((a) => a.status === 'shortlisted').length,
+    Hired: sortedApplicants.filter((a) => a.status === 'hired').length,
+    Rejected: sortedApplicants.filter((a) => a.status === 'rejected').length,
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -258,9 +291,28 @@ export default function CandidatesScreen() {
         style={[styles.header, { paddingTop: topInset + 12 }]}
       >
         <View style={styles.headerDecor} />
-        <Text style={styles.headerTitle}>Applicants</Text>
+        {jobId ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 4,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ padding: 4 }}
+            >
+              <ArrowLeft size={22} color='#ffffff' />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Applicants</Text>
+          </View>
+        ) : (
+          <Text style={styles.headerTitle}>Applicants</Text>
+        )}
         <Text style={styles.headerSub} numberOfLines={1}>
-          {jobTitle ?? 'Job Applicants'}
+          {jobTitle ? jobTitle : 'All Candidates Across Jobs'}
         </Text>
 
         <View style={styles.statsRow}>
@@ -476,10 +528,27 @@ export default function CandidatesScreen() {
                   </View>
                 )}
 
-                {/* Match score row */}
+                {/* Match & AI Interview score row */}
                 <View
                   style={[styles.scoreRow, { borderTopColor: colors.border }]}
                 >
+                  {/* AI Interview Pre-Screened Badge / Status */}
+                  {applicant.aiInterview?.completed ? (
+                    <View style={styles.aiPreScreenedPill}>
+                      <Bot size={11} color='#059669' />
+                      <Text style={styles.aiPreScreenedText}>
+                        ✓ AI Pre-Screened ({applicant.aiInterview.overallReadinessScore}%)
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.aiNotCompletedPill}>
+                      <Bot size={11} color='#9ca3af' />
+                      <Text style={styles.aiNotCompletedText}>
+                        AI Interview: Not Completed
+                      </Text>
+                    </View>
+                  )}
+
                   {applicant.matchPercent != null ? (
                     <View style={styles.matchPill}>
                       <Sparkles size={11} color='#10b981' />
@@ -547,9 +616,13 @@ export default function CandidatesScreen() {
                     style={styles.resumeBtn}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      const effectiveJobId = jobId || (item as any).jobId;
                       router.push({
                         pathname: '/candidate-detail',
-                        params: { candidateId: candidate._id, jobId: jobId },
+                        params: {
+                          candidateId: candidate._id,
+                          jobId: effectiveJobId ? String(effectiveJobId) : '',
+                        },
                       });
                     }}
                   >
@@ -854,6 +927,38 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   matchText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#10b981' },
+  aiPreScreenedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  aiPreScreenedText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#059669',
+  },
+  aiNotCompletedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  aiNotCompletedText: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    color: '#6b7280',
+  },
   matchPillEmpty: { paddingHorizontal: 10, paddingVertical: 5 },
   matchEmptyText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   matchLabelPill: {

@@ -19,4 +19,12 @@ router.delete(
   candidateController.unsavedJob,
 );
 
+// Recruiter opens a candidate profile — log/increment the view count
+router.post(
+  '/:id/view',
+  authController.protect,
+  authController.restrictTo('recruiter'),
+  candidateController.incrementProfileView,
+);
+
 module.exports = router;

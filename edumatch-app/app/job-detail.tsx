@@ -4,11 +4,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 import {
   Banknote,
   BookOpen,
+  Bot,
   Briefcase,
   Building2,
+  CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   Clock,
   GraduationCap,
+  Lock,
   MapPin,
   Phone,
   Send,
@@ -94,12 +98,15 @@ export default function JobDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── Apply state ──────────────────────────────────────────────────────────
+  // ─── Apply & Mock Interview state ──────────────────────────────────────────
   const [applied, setApplied] = useState(false);
   const [applying, setApplying] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [interviewCompleted, setInterviewCompleted] = useState(false);
+  const [mockInterviewScore, setMockInterviewScore] = useState<number | null>(
+    null,
+  );
 
- 
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -133,7 +140,11 @@ export default function JobDetailScreen() {
         setCheckingStatus(true);
         try {
           const res = await applicationStatusService.checkStatus(jobId);
-          if (active) setApplied(res.data.hasApplied);
+          if (active) {
+            setApplied(Boolean(res.data?.hasApplied));
+            setInterviewCompleted(Boolean(res.data?.hasCompletedMockInterview));
+            setMockInterviewScore(res.data?.readinessScore ?? null);
+          }
         } catch {
           // silently fail — default stays false
         } finally {
@@ -151,6 +162,15 @@ export default function JobDetailScreen() {
   // ─── Apply handler ─────────────────────────────────────────────────────────
   const handleApply = async () => {
     if (applying || applied) return;
+
+    if (!interviewCompleted) {
+      Alert.alert(
+        'AI Mock Interview Required',
+        'Please complete the AI Mock Interview for this job before submitting your application.',
+      );
+      return;
+    }
+
     try {
       setApplying(true);
       await applyToJobService.applyToJob(jobId);
@@ -228,28 +248,83 @@ export default function JobDetailScreen() {
       );
     }
 
-    // Active job — Apply Now
+    // Active job, but AI Mock Interview NOT completed yet
+    if (!interviewCompleted) {
+      return (
+        <View style={styles.lockedApplyBox}>
+          <View style={styles.lockedNoticeRow}>
+            <Lock size={13} color='#9333ea' />
+            <Text style={styles.lockedNoticeText}>
+              Complete the AI Mock Interview before applying.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.lockedApplyBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              Alert.alert(
+                'AI Mock Interview Required',
+                'You must complete the AI Mock Interview for this job before submitting your application.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Start Interview',
+                    onPress: () =>
+                      router.push({
+                        pathname: '/mock-interview',
+                        params: {
+                          jobId: job._id,
+                          jobTitle: job.title,
+                          department: job.department,
+                          location: job.location,
+                        },
+                      }),
+                  },
+                ],
+              );
+            }}
+          >
+            <View style={styles.lockedApplyBtnInner}>
+              <Lock size={15} color='#9ca3af' />
+              <Text style={styles.lockedApplyBtnText}>Apply Now</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Active job AND Mock Interview completed — Apply Now is enabled!
     return (
-      <TouchableOpacity
-        style={[styles.applyBtn, applying && { opacity: 0.7 }]}
-        onPress={handleApply}
-        disabled={applying}
-        activeOpacity={0.85}
-      >
-        <LinearGradient
-          colors={['#7c3aed', '#6d28d9']}
-          style={styles.applyBtnGrad}
+      <View style={{ gap: 8 }}>
+        <View style={styles.interviewDoneBadge}>
+          <CheckCircle2 size={14} color='#10b981' />
+          <Text style={styles.interviewDoneText}>
+            ✓ Mock Interview Completed
+            {mockInterviewScore ? ` (${mockInterviewScore}% Readiness)` : ''}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.applyBtn, applying && { opacity: 0.7 }]}
+          onPress={handleApply}
+          disabled={applying}
+          activeOpacity={0.85}
         >
-          {applying ? (
-            <ActivityIndicator size='small' color='#fff' />
-          ) : (
-            <>
-              <Send size={16} color='#fff' />
-              <Text style={styles.applyBtnText}>Apply Now</Text>
-            </>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={['#7c3aed', '#6d28d9']}
+            style={styles.applyBtnGrad}
+          >
+            {applying ? (
+              <ActivityIndicator size='small' color='#fff' />
+            ) : (
+              <>
+                <Send size={16} color='#fff' />
+                <Text style={styles.applyBtnText}>Apply Now</Text>
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -360,6 +435,116 @@ export default function JobDetailScreen() {
               ))}
             </View>
           </Section>
+        )}
+
+        {/* ── AI Mock Interview Practice Card ── */}
+        {isJobActive && (
+          <View style={styles.aiInterviewCard}>
+            <LinearGradient
+              colors={
+                interviewCompleted
+                  ? ['#064e3b', '#065f46', '#047857']
+                  : ['#1e1b4b', '#2e1065', '#3b0764']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.aiInterviewGrad}
+            >
+              <View style={styles.aiInterviewTop}>
+                <View
+                  style={[
+                    styles.aiInterviewIconWrap,
+                    interviewCompleted && {
+                      backgroundColor: 'rgba(16, 185, 129, 0.25)',
+                    },
+                  ]}
+                >
+                  {interviewCompleted ? (
+                    <CheckCircle2 size={22} color='#34d399' />
+                  ) : (
+                    <Bot size={22} color='#c084fc' />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View
+                    style={[
+                      styles.aiBadgeRow,
+                      interviewCompleted && {
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      },
+                    ]}
+                  >
+                    {interviewCompleted ? (
+                      <>
+                        <CheckCircle2 size={11} color='#34d399' />
+                        <Text
+                          style={[styles.aiBadgeText, { color: '#34d399' }]}
+                        >
+                          INTERVIEW COMPLETED
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={11} color='#fbbf24' />
+                        <Text style={styles.aiBadgeText}>AI INTERVIEW COACH</Text>
+                      </>
+                    )}
+                  </View>
+                  <Text style={styles.aiInterviewTitle}>
+                    {interviewCompleted
+                      ? 'AI Mock Interview Completed'
+                      : 'Practice AI Mock Interview'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.aiInterviewSub,
+                      interviewCompleted && {
+                        color: 'rgba(209, 250, 229, 0.9)',
+                      },
+                    ]}
+                  >
+                    {interviewCompleted
+                      ? `Great job! You are verified with readiness feedback for this role. You can now submit your application or practice again.`
+                      : "Answer 5 tailored questions based on your profile & this job's exact requirements. Required before applying!"}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.aiStartBtn}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: '/mock-interview',
+                    params: {
+                      jobId: job._id,
+                      jobTitle: job.title,
+                      department: job.department,
+                      location: job.location,
+                    },
+                  })
+                }
+              >
+                <LinearGradient
+                  colors={
+                    interviewCompleted
+                      ? ['#059669', '#10b981']
+                      : ['#7c3aed', '#9333ea']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.aiStartBtnGrad}
+                >
+                  <Text style={styles.aiStartBtnText}>
+                    {interviewCompleted
+                      ? 'Practice Again'
+                      : 'Practice AI Mock Interview'}
+                  </Text>
+                  <ChevronRight size={16} color='#ffffff' />
+                </LinearGradient>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
         )}
 
         {/* Organisation Details */}
@@ -789,5 +974,133 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter_500Medium',
     color: '#7c3aed',
+  },
+  // ── AI Mock Interview Card Styles ──
+  aiInterviewCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#2e1065',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  aiInterviewGrad: {
+    padding: 18,
+  },
+  aiInterviewTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
+  },
+  aiInterviewIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  aiBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  aiBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#fbbf24',
+    letterSpacing: 0.5,
+  },
+  aiInterviewTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  aiInterviewSub: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(216, 180, 254, 0.85)',
+    lineHeight: 17,
+  },
+  aiStartBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  aiStartBtnGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  aiStartBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: '#ffffff',
+  },
+  // ── Locked & Completed Apply Button Styles ──
+  lockedApplyBox: {
+    gap: 8,
+  },
+  lockedNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+  },
+  lockedNoticeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#7c3aed',
+    textAlign: 'center',
+  },
+  lockedApplyBtn: {
+    borderRadius: 14,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  lockedApplyBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
+  },
+  lockedApplyBtnText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#9ca3af',
+  },
+  interviewDoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#f0fdf4',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  interviewDoneText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#15803d',
   },
 });

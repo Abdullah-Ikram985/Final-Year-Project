@@ -28,6 +28,15 @@ export const recommendedJobs = {
   },
 };
 
+// All jobs currently saved in the backend (posted by recruiters),
+// regardless of AI match score — used for the general "Browse Jobs" list.
+export const allJobsService = {
+  getAllJobs: async () => {
+    const response = await apiClient.get(API_ROUTES.ALL_JOBS);
+    return response.data;
+  },
+};
+
 export const updatingJobStatus = {
   updateJobStatus: async (jobId: string, jobStatus: string) => {
     const response = await apiClient.patch(
@@ -103,4 +112,27 @@ export const updateApplicantStatusService = {
   },
 };
 
-
+export const notificationService = {
+  getNotifications: async () => {
+    const response = await apiClient.get(API_ROUTES.NOTIFICATIONS);
+    return response.data;
+  },
+  markAsRead: async (notificationId: string) => {
+    const response = await apiClient.patch(
+      `${API_ROUTES.NOTIFICATIONS}/${notificationId}/read`,
+    );
+    return response.data;
+  },
+  markAllAsRead: async () => {
+    const response = await apiClient.patch(
+      API_ROUTES.MARK_ALL_NOTIFICATIONS_READ,
+    );
+    return response.data;
+  },
+  deleteNotification: async (notificationId: string) => {
+    const response = await apiClient.delete(
+      `${API_ROUTES.NOTIFICATIONS}/${notificationId}`,
+    );
+    return response.data;
+  },
+};

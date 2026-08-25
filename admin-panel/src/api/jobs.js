@@ -1,12 +1,40 @@
 import apiClient from "./client";
 
+export const fetchMockInterviewAnalytics = async () => {
+  const response = await apiClient.get("mock-interviews/admin/analytics");
+  return response.data?.data || null;
+};
+
 export const fetchAllJobs = async () => {
-  const response = await apiClient.get("jobs/allJobs");
+  const response = await apiClient.get("jobs/admin/all");
+  return response.data?.data?.jobs || [];
+};
+
+export const fetchPendingJobs = async () => {
+  const response = await apiClient.get("jobs/admin/pending");
+  return response.data?.data?.jobs || [];
+};
+
+export const fetchAdminJobs = async (status = "All") => {
+  const params = status && status !== "All" ? { status } : {};
+  const response = await apiClient.get("jobs/admin/all", { params });
   return response.data?.data?.jobs || [];
 };
 
 export const fetchJobById = async (jobId) => {
   const response = await apiClient.get(`jobs/getJobById/${jobId}`);
+  return response.data?.data?.job;
+};
+
+export const approveJob = async (jobId) => {
+  const response = await apiClient.patch(`jobs/admin/approve/${jobId}`);
+  return response.data?.data?.job;
+};
+
+export const rejectJob = async (jobId, reason) => {
+  const response = await apiClient.patch(`jobs/admin/reject/${jobId}`, {
+    reason,
+  });
   return response.data?.data?.job;
 };
 
@@ -29,11 +57,15 @@ export const extractRecruitersFromJobs = (jobs = []) => {
       company: profile.companyName || "N/A",
       jobs: 0,
       activeJobs: 0,
+      pendingJobs: 0,
     };
 
     existing.jobs += 1;
-    if (job.jobStatus === "Active") {
+    const s = (job.jobStatus || "").toLowerCase();
+    if (s === "active") {
       existing.activeJobs += 1;
+    } else if (s === "pending") {
+      existing.pendingJobs += 1;
     }
 
     recruiterMap.set(profile._id, existing);
@@ -75,9 +107,26 @@ export const getJobStats = (jobs = []) => {
 
   return {
     totalJobs: jobs.length,
-    activeJobs: jobs.filter((job) => job.jobStatus === "Active").length,
-    closedJobs: jobs.filter((job) => job.jobStatus === "Closed").length,
-    draftJobs: jobs.filter((job) => job.jobStatus === "Draft").length,
+    pendingJobs: jobs.filter((job) => {
+      const s = (job.jobStatus || "").toLowerCase();
+      return s === "pending";
+    }).length,
+    activeJobs: jobs.filter((job) => {
+      const s = (job.jobStatus || "").toLowerCase();
+      return s === "active";
+    }).length,
+    rejectedJobs: jobs.filter((job) => {
+      const s = (job.jobStatus || "").toLowerCase();
+      return s === "rejected";
+    }).length,
+    closedJobs: jobs.filter((job) => {
+      const s = (job.jobStatus || "").toLowerCase();
+      return s === "closed";
+    }).length,
+    draftJobs: jobs.filter((job) => {
+      const s = (job.jobStatus || "").toLowerCase();
+      return s === "draft";
+    }).length,
     totalApplications,
   };
 };

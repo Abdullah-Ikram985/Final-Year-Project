@@ -6,11 +6,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import {
+  AlertCircle,
   Briefcase,
   Calendar,
   CheckCircle,
   Clock,
   Eye,
+  Info,
   MapPin,
   MoreVertical,
   Plus,
@@ -37,7 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 
-const FILTERS = ['All', 'Active', 'Closed', 'Draft'];
+const FILTERS = ['All', 'Pending', 'Active', 'Rejected', 'Closed'];
 
 const STATUS_OPTIONS = [
   {
@@ -71,6 +73,7 @@ const normalizeJob = (job: any) => ({
   type: job.jobType ?? '—',
   salary: job.salary ?? null,
   skills: Array.isArray(job.skills) ? job.skills : [],
+  rejectionReason: job.rejectionReason || '',
   posted: job.createdAt
     ? new Date(job.createdAt).toLocaleDateString('en-US', {
         month: 'short',
@@ -85,24 +88,60 @@ const normalizeJob = (job: any) => ({
   applicants: Array.isArray(job.applicants) ? job.applicants.length : 0,
   views: job.views ?? 0,
   status: (() => {
-    const s = (job.jobStatus ?? job.status ?? 'Active').toLowerCase();
+    const s = (job.jobStatus ?? job.status ?? 'Pending').toLowerCase();
+    if (s === 'pending') return 'Pending';
     if (s === 'active') return 'Active';
+    if (s === 'rejected') return 'Rejected';
     if (s === 'closed') return 'Closed';
     if (s === 'draft') return 'Draft';
-    return 'Active';
+    return 'Pending';
   })(),
 });
 
 const statusStyle = (status: string) => {
   switch (status) {
+    case 'Pending':
+      return {
+        statusBg: '#fffbeb',
+        statusColor: '#f59e0b',
+        statusLabel: 'Pending Approval',
+        subtitle: 'Waiting for admin review',
+      };
     case 'Active':
-      return { statusBg: '#f0fdf4', statusColor: '#10b981' };
+      return {
+        statusBg: '#f0fdf4',
+        statusColor: '#10b981',
+        statusLabel: 'Approved / Active',
+        subtitle: null,
+      };
+    case 'Rejected':
+      return {
+        statusBg: '#fff1f2',
+        statusColor: '#ef4444',
+        statusLabel: 'Rejected',
+        subtitle: null,
+      };
     case 'Closed':
-      return { statusBg: '#f3f4f6', statusColor: '#6b7280' };
+      return {
+        statusBg: '#f3f4f6',
+        statusColor: '#6b7280',
+        statusLabel: 'Closed',
+        subtitle: null,
+      };
     case 'Draft':
-      return { statusBg: '#fffbeb', statusColor: '#f59e0b' };
+      return {
+        statusBg: '#fffbeb',
+        statusColor: '#f59e0b',
+        statusLabel: 'Draft',
+        subtitle: null,
+      };
     default:
-      return { statusBg: '#f0fdf4', statusColor: '#10b981' };
+      return {
+        statusBg: '#fffbeb',
+        statusColor: '#f59e0b',
+        statusLabel: status,
+        subtitle: null,
+      };
   }
 };
 
@@ -158,13 +197,12 @@ export default function RecruiterJobsScreen() {
     }).start(() => setMenuJob(null));
   };
 
-
   const handleStatusChange = async (jobId: string, newStatus: string) => {
     closeMenu();
     setUpdatingId(jobId);
     try {
       await updatingJobStatus.updateJobStatus(jobId, newStatus);
-      await fetchJobs(true); // ← THE FIX: re-fetch instead of local patch
+      await fetchJobs(true);
     } catch (e: any) {
       Alert.alert(
         'Error',
@@ -188,7 +226,7 @@ export default function RecruiterJobsScreen() {
           onPress: async () => {
             try {
               await deleteJob.delete(job.id);
-              await fetchJobs(true); // also re-fetch after delete
+              await fetchJobs(true);
             } catch (e: any) {
               Alert.alert(
                 'Error',
@@ -203,6 +241,7 @@ export default function RecruiterJobsScreen() {
 
   const filtered = jobs.filter((j) => filter === 'All' || j.status === filter);
   const totalApplicants = jobs.reduce((acc, j) => acc + j.applicants, 0);
+  const pendingCount = jobs.filter((j) => j.status === 'Pending').length;
   const activeCount = jobs.filter((j) => j.status === 'Active').length;
 
   const menuScale = menuAnim.interpolate({
@@ -225,7 +264,7 @@ export default function RecruiterJobsScreen() {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerTitle}>My Job Postings</Text>
-            <Text style={styles.headerSub}>Manage your active openings</Text>
+            <Text style={styles.headerSub}>Manage your active and pending openings</Text>
           </View>
           <TouchableOpacity
             style={styles.postBtn}
@@ -243,9 +282,14 @@ export default function RecruiterJobsScreen() {
         <View style={styles.statsRow}>
           {[
             {
-              label: 'Total Posted',
+              label: 'Total',
               value: String(jobs.length),
               bg: 'rgba(255,255,255,0.15)',
+            },
+            {
+              label: 'Pending',
+              value: String(pendingCount),
+              bg: 'rgba(245,158,11,0.3)',
             },
             {
               label: 'Active',
@@ -313,8 +357,9 @@ export default function RecruiterJobsScreen() {
           contentContainerStyle={[styles.list, { paddingBottom: 120 }]}
           scrollEnabled={filtered.length > 0}
           renderItem={({ item: job }) => {
-            const { statusBg, statusColor } = statusStyle(job.status);
+            const sStyle = statusStyle(job.status);
             const isUpdating = updatingId === job.id;
+
             return (
               <View style={[styles.jobCard, { backgroundColor: colors.card }]}>
                 <View style={styles.jobTop}>
@@ -376,13 +421,39 @@ export default function RecruiterJobsScreen() {
                     </Text>
                   </View>
                   <View
-                    style={[styles.statusBadge, { backgroundColor: statusBg }]}
+                    style={[
+                      styles.statusBadge,
+                      { backgroundColor: sStyle.statusBg },
+                    ]}
                   >
-                    <Text style={[styles.statusText, { color: statusColor }]}>
-                      {job.status}
+                    <Text style={[styles.statusText, { color: sStyle.statusColor }]}>
+                      {sStyle.statusLabel}
                     </Text>
                   </View>
                 </View>
+
+                {/* Status Subtitle Note (e.g. Waiting for admin review) */}
+                {sStyle.subtitle && (
+                  <View style={styles.pendingNotice}>
+                    <Clock size={12} color='#f59e0b' />
+                    <Text style={styles.pendingNoticeText}>
+                      {sStyle.subtitle}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Rejection Reason Box */}
+                {job.status === 'Rejected' && (
+                  <View style={styles.rejectionCard}>
+                    <View style={styles.rejectionRow}>
+                      <AlertCircle size={13} color='#ef4444' />
+                      <Text style={styles.rejectionTitle}>Rejection Reason:</Text>
+                    </View>
+                    <Text style={styles.rejectionText}>
+                      {job.rejectionReason || 'Your job posting does not meet our platform requirements.'}
+                    </Text>
+                  </View>
+                )}
 
                 <View
                   style={[styles.jobStats, { borderTopColor: colors.border }]}
@@ -498,44 +569,62 @@ export default function RecruiterJobsScreen() {
                   ]}
                 />
 
-                <Text
-                  style={[
-                    styles.menuSectionLabel,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  CHANGE STATUS
-                </Text>
-                {STATUS_OPTIONS.filter((s) => s.value !== menuJob?.status).map(
-                  (opt) => {
-                    const Icon = opt.icon;
-                    return (
-                      <TouchableOpacity
-                        key={opt.value}
-                        style={styles.menuItem}
-                        onPress={() =>
-                          handleStatusChange(menuJob.id, opt.value)
-                        }
-                      >
-                        <View
-                          style={[
-                            styles.menuItemIcon,
-                            { backgroundColor: opt.bg },
-                          ]}
-                        >
-                          <Icon size={16} color={opt.color} />
-                        </View>
-                        <Text
-                          style={[
-                            styles.menuItemText,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  },
+                {menuJob?.status === 'Pending' ? (
+                  <View style={styles.menuInfoBox}>
+                    <Info size={15} color='#f59e0b' />
+                    <Text style={styles.menuInfoText}>
+                      This job is pending admin approval. You will receive a notification once reviewed.
+                    </Text>
+                  </View>
+                ) : menuJob?.status === 'Rejected' ? (
+                  <View style={[styles.menuInfoBox, { backgroundColor: '#fff1f2' }]}>
+                    <AlertCircle size={15} color='#ef4444' />
+                    <Text style={[styles.menuInfoText, { color: '#b91c1c' }]}>
+                      This job was rejected by admin.
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text
+                      style={[
+                        styles.menuSectionLabel,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      CHANGE STATUS
+                    </Text>
+                    {STATUS_OPTIONS.filter((s) => s.value !== menuJob?.status).map(
+                      (opt) => {
+                        const Icon = opt.icon;
+                        return (
+                          <TouchableOpacity
+                            key={opt.value}
+                            style={styles.menuItem}
+                            onPress={() =>
+                              handleStatusChange(menuJob.id, opt.value)
+                            }
+                          >
+                            <View
+                              style={[
+                                styles.menuItemIcon,
+                                { backgroundColor: opt.bg },
+                              ]}
+                            >
+                              <Icon size={16} color={opt.color} />
+                            </View>
+                            <Text
+                              style={[
+                                styles.menuItemText,
+                                { color: colors.foreground },
+                              ]}
+                            >
+                              {opt.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      },
+                    )}
+                  </>
                 )}
 
                 <View
@@ -604,20 +693,20 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   postBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#ffffff' },
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statItem: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
+  statsRow: { flexDirection: 'row', gap: 8 },
+  statItem: { flex: 1, borderRadius: 12, padding: 10, alignItems: 'center' },
   statValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: 'Inter_700Bold',
     color: '#ffffff',
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: 'Inter_500Medium',
     color: 'rgba(196,181,253,0.8)',
   },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16 },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 12 },
   tab: {
     flex: 1,
     paddingVertical: 13,
@@ -626,7 +715,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tabActive: { borderBottomColor: '#7c3aed' },
-  tabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#8b7dc0' },
+  tabText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#8b7dc0' },
   tabTextActive: { color: '#7c3aed' },
   list: { padding: 16, gap: 12 },
   jobCard: {
@@ -659,7 +748,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   jobMetaTag: {
     flexDirection: 'row',
@@ -673,6 +762,46 @@ const styles = StyleSheet.create({
   jobMetaText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusText: { fontSize: 10, fontFamily: 'Inter_700Bold' },
+  pendingNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  pendingNoticeText: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    color: '#b45309',
+  },
+  rejectionCard: {
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  rejectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4,
+  },
+  rejectionTitle: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#b91c1c',
+  },
+  rejectionText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#7f1d1d',
+    lineHeight: 16,
+  },
   jobStats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -758,6 +887,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 8,
     marginLeft: 4,
+  },
+  menuInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fffbeb',
+    padding: 12,
+    borderRadius: 10,
+  },
+  menuInfoText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#92400e',
+    flex: 1,
+    lineHeight: 16,
   },
   menuItem: {
     flexDirection: 'row',

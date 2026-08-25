@@ -40,6 +40,35 @@ router.get(
   jobController.getRecommendedJobs,
 );
 
+// ─── Admin Review & Approval Routes ───────────────────────────────────────
+router.get(
+  '/admin/pending',
+  authController.protect,
+  authController.restrictTo('admin'),
+  jobController.getPendingJobs,
+);
+
+router.get(
+  '/admin/all',
+  authController.protect,
+  authController.restrictTo('admin'),
+  jobController.getAdminJobs,
+);
+
+router.patch(
+  '/admin/approve/:jobId',
+  authController.protect,
+  authController.restrictTo('admin'),
+  jobController.approveJob,
+);
+
+router.patch(
+  '/admin/reject/:jobId',
+  authController.protect,
+  authController.restrictTo('admin'),
+  jobController.rejectJob,
+);
+
 // ─── Admin Utility ────────────────────────────────────────────────────────
 // Run once to generate embeddings for all jobs created before this feature
 router.post(

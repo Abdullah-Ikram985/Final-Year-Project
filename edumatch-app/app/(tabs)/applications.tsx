@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Calendar, Clock, FileText } from 'lucide-react-native';
+import { Calendar, Clock, FileText, MapPin } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -241,14 +241,31 @@ export default function ApplicationsScreen() {
                     >
                       {job.createdBy?.companyName ?? 'Company'}
                     </Text>
-                    <Text
-                      style={[
-                        styles.appDept,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {job.department}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                      {job.department ? (
+                        <Text
+                          style={[
+                            styles.appDept,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {job.department}
+                        </Text>
+                      ) : null}
+                      {job.location ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                          <MapPin size={11} color={colors.mutedForeground} />
+                          <Text
+                            style={[
+                              styles.appDept,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
+                            {job.location}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                   <View
                     style={[styles.statusBadge, { backgroundColor: ui.bg }]}

@@ -5,9 +5,13 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { candidateViewServices } from '@/api/services/candidateServices';
 import {
   Bookmark,
+  Bot,
   Briefcase,
   CheckCircle,
+  CheckCircle2,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Code2,
   FileText,
   GraduationCap,
@@ -39,6 +43,10 @@ import {
   jobApplicantsService,
   updateApplicantStatusService,
 } from '@/api/services/jobServices';
+import {
+  mockInterviewService,
+  RecruiterInterviewReport,
+} from '@/api/services/mockInterviewService';
 import { useColors } from '@/hooks/useColors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,33 +108,66 @@ export default function CandidateDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
+  const [interviewReport, setInterviewReport] =
+    useState<RecruiterInterviewReport | null>(null);
+  const [loadingInterview, setLoadingInterview] = useState(true);
+  const [expandedAnswers, setExpandedAnswers] = useState<
+    Record<string, boolean>
+  >({});
 
   // ─── Fetch on every screen focus ───────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+
       const fetchCandidate = async () => {
-        if (!jobId || !candidateId) return;
         setLoading(true);
+        setError(null);
+        if (!jobId || !candidateId) {
+          setError('Missing candidate or job information');
+          setLoading(false);
+          return;
+        }
         try {
           const res = await jobApplicantsService.getApplicants(jobId);
           const all: ApplicantEntry[] = res.data.applicants ?? [];
           const found = all.find((a) => a.candidate._id === candidateId);
           if (found) {
-            setApplicant(found);
+            if (active) setApplicant(found);
           } else {
-            setError('Candidate not found');
+            if (active) setError('Candidate not found');
           }
         } catch (e: any) {
-          setError(e?.response?.data?.message || 'Failed to load candidate');
+          if (active)
+            setError(e?.response?.data?.message || 'Failed to load candidate');
         } finally {
-          setLoading(false);
+          if (active) setLoading(false);
+        }
+      };
+
+      const fetchInterviewReport = async () => {
+        if (!jobId || !candidateId) return;
+        setLoadingInterview(true);
+        try {
+          const res =
+            await mockInterviewService.getRecruiterCandidateInterview(
+              candidateId,
+              jobId,
+            );
+          if (active && res.data) {
+            setInterviewReport(res.data);
+          }
+        } catch (e) {
+          // silently fail — interview report stays null
+        } finally {
+          if (active) setLoadingInterview(false);
         }
       };
 
       fetchCandidate();
+      fetchInterviewReport();
 
       // Fire-and-forget view increment — don't block or fail the screen
-      // if this errors.
       if (candidateId) {
         candidateViewServices
           .incrementProfileView(candidateId)
@@ -134,6 +175,10 @@ export default function CandidateDetailScreen() {
             console.error('Failed to log profile view:', e?.message),
           );
       }
+
+      return () => {
+        active = false;
+      };
     }, [candidateId, jobId]),
   );
 
@@ -399,6 +444,349 @@ export default function CandidateDetailScreen() {
             </View>
           </View>
         </View>
+
+        {/* ── AI Mock Interview Report ── */}
+        <Section title='AI Mock Interview Report' Icon={Bot} colors={colors}>
+          {loadingInterview ? (
+            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+              <ActivityIndicator size='small' color='#7c3aed' />
+            </View>
+          ) : interviewReport?.completed ? (
+            <View style={styles.interviewReportBox}>
+              {/* Top Banner: Score & Pre-screened Badge */}
+              <LinearGradient
+                colors={['#1e1b4b', '#2e1065']}
+                style={styles.interviewReportHeader}
+              >
+                <View style={styles.interviewReportScoreRow}>
+                  <View>
+                    <Text style={styles.interviewReportHeaderLabel}>
+                      OVERALL READINESS
+                    </Text>
+                    <Text style={styles.interviewReportHeaderScore}>
+                      {interviewReport.overallReadinessScore}%
+                    </Text>
+                  </View>
+                  <View style={styles.preScreenedBadge}>
+                    <CheckCircle2 size={13} color='#34d399' />
+                    <Text style={styles.preScreenedBadgeText}>
+                      ✓ AI Pre-Screened
+                    </Text>
+                  </View>
+                </View>
+                {interviewReport.completedAt && (
+                  <Text style={styles.interviewCompletedDate}>
+                    Completed on{' '}
+                    {new Date(interviewReport.completedAt).toLocaleDateString(
+                      'en-US',
+                      { month: 'short', day: 'numeric', year: 'numeric' },
+                    )}
+                  </Text>
+                )}
+              </LinearGradient>
+
+              {/* Competency Breakdown Grid */}
+              {interviewReport.breakdown && (
+                <View style={styles.breakdownGrid}>
+                  <View
+                    style={[
+                      styles.breakdownCard,
+                      { backgroundColor: colors.background },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.breakdownValue,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {interviewReport.breakdown.technicalKnowledge}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.breakdownLabel,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Technical
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.breakdownCard,
+                      { backgroundColor: colors.background },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.breakdownValue,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {interviewReport.breakdown.communication}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.breakdownLabel,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Communication
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.breakdownCard,
+                      { backgroundColor: colors.background },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.breakdownValue,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {interviewReport.breakdown.jobRelevance}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.breakdownLabel,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Relevance
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.breakdownCard,
+                      { backgroundColor: colors.background },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.breakdownValue,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {interviewReport.breakdown.answerQuality}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.breakdownLabel,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Quality
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Recommendation */}
+              {interviewReport.recommendation && (
+                <View
+                  style={[
+                    styles.reportSection,
+                    { backgroundColor: '#f0eeff' },
+                  ]}
+                >
+                  <View style={styles.reportSectionHeader}>
+                    <Sparkles size={14} color='#7c3aed' />
+                    <Text style={styles.reportSectionTitlePurple}>
+                      AI Recommendation
+                    </Text>
+                  </View>
+                  <Text style={styles.reportSectionBodyPurple}>
+                    {interviewReport.recommendation}
+                  </Text>
+                </View>
+              )}
+
+              {/* Key Strengths */}
+              {interviewReport.strengths &&
+                interviewReport.strengths.length > 0 && (
+                  <View style={styles.reportListBlock}>
+                    <Text
+                      style={[styles.reportListHeader, { color: '#059669' }]}
+                    >
+                      Key Strengths
+                    </Text>
+                    {interviewReport.strengths.map((str, idx) => (
+                      <View key={idx} style={styles.bulletRow}>
+                        <Text style={styles.bulletGreen}>•</Text>
+                        <Text
+                          style={[
+                            styles.bulletText,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {str}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+              {/* Areas to Improve */}
+              {interviewReport.areasToImprove &&
+                interviewReport.areasToImprove.length > 0 && (
+                  <View style={styles.reportListBlock}>
+                    <Text
+                      style={[styles.reportListHeader, { color: '#d97706' }]}
+                    >
+                      Areas to Explore / Follow Up
+                    </Text>
+                    {interviewReport.areasToImprove.map((imp, idx) => (
+                      <View key={idx} style={styles.bulletRow}>
+                        <Text style={styles.bulletAmber}>•</Text>
+                        <Text
+                          style={[
+                            styles.bulletText,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {imp}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+              {/* 5 Questions & Candidate Answers */}
+              {interviewReport.answers &&
+                interviewReport.answers.length > 0 && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text
+                      style={[
+                        styles.reportListHeader,
+                        { color: colors.foreground, marginBottom: 8 },
+                      ]}
+                    >
+                      Interview Questions & Responses (
+                      {interviewReport.answers.length})
+                    </Text>
+                    {interviewReport.answers.map((qa, index) => {
+                      const isExpanded =
+                        expandedAnswers[qa.questionId || String(index)];
+                      return (
+                        <View
+                          key={qa.questionId || index}
+                          style={[
+                            styles.qaCard,
+                            {
+                              backgroundColor: colors.background,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        >
+                          <TouchableOpacity
+                            style={styles.qaHeader}
+                            activeOpacity={0.7}
+                            onPress={() =>
+                              setExpandedAnswers((prev) => ({
+                                ...prev,
+                                [qa.questionId || String(index)]: !isExpanded,
+                              }))
+                            }
+                          >
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <Text style={styles.qaNumber}>
+                                Question {index + 1}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.qaQuestion,
+                                  { color: colors.foreground },
+                                ]}
+                                numberOfLines={isExpanded ? undefined : 2}
+                              >
+                                {qa.question}
+                              </Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                              {qa.score != null && (
+                                <View style={styles.qaScoreBadge}>
+                                  <Text style={styles.qaScoreText}>
+                                    {qa.score}%
+                                  </Text>
+                                </View>
+                              )}
+                              {isExpanded ? (
+                                <ChevronUp
+                                  size={16}
+                                  color={colors.mutedForeground}
+                                />
+                              ) : (
+                                <ChevronDown
+                                  size={16}
+                                  color={colors.mutedForeground}
+                                />
+                              )}
+                            </View>
+                          </TouchableOpacity>
+
+                          {isExpanded && (
+                            <View
+                              style={[
+                                styles.qaBody,
+                                { borderTopColor: colors.border },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.qaLabel,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                Candidate Answer:
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.qaAnswerText,
+                                  { color: colors.foreground },
+                                ]}
+                              >
+                                "{qa.answer}"
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.notCompletedCard,
+                { backgroundColor: colors.background },
+              ]}
+            >
+              <Bot size={22} color='#9ca3af' />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.notCompletedTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  AI Interview: Not Completed
+                </Text>
+                <Text
+                  style={[
+                    styles.notCompletedSub,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Candidate has not yet completed the AI Mock Interview for
+                  this job.
+                </Text>
+              </View>
+            </View>
+          )}
+        </Section>
 
         {/* Bio */}
         {candidate?.professionalBio && (
@@ -857,4 +1245,188 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   resumeText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#ffffff' },
+  // ── AI Mock Interview Report Styles ──
+  interviewReportBox: {
+    gap: 12,
+  },
+  interviewReportHeader: {
+    borderRadius: 14,
+    padding: 16,
+  },
+  interviewReportScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  interviewReportHeaderLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: 'rgba(216, 180, 254, 0.9)',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  interviewReportHeaderScore: {
+    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+    color: '#ffffff',
+  },
+  preScreenedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  preScreenedBadgeText: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#34d399',
+  },
+  interviewCompletedDate: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(216, 180, 254, 0.7)',
+    marginTop: 6,
+  },
+  breakdownGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  breakdownCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  breakdownValue: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+  },
+  breakdownLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 2,
+  },
+  reportSection: {
+    borderRadius: 12,
+    padding: 14,
+  },
+  reportSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  reportSectionTitlePurple: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#7c3aed',
+  },
+  reportSectionBodyPurple: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#4c1d95',
+    lineHeight: 18,
+  },
+  reportListBlock: {
+    gap: 6,
+  },
+  reportListHeader: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  bulletGreen: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
+  bulletAmber: {
+    fontSize: 14,
+    color: '#d97706',
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 18,
+  },
+  qaCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  qaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  qaNumber: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#7c3aed',
+    marginBottom: 2,
+  },
+  qaQuestion: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    lineHeight: 16,
+  },
+  qaScoreBadge: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  qaScoreText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#2563eb',
+  },
+  qaBody: {
+    borderTopWidth: 1,
+    padding: 12,
+    backgroundColor: 'rgba(124, 58, 237, 0.03)',
+  },
+  qaLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 4,
+  },
+  qaAnswerText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    fontStyle: 'italic',
+    lineHeight: 17,
+  },
+  notCompletedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+  },
+  notCompletedTitle: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 2,
+  },
+  notCompletedSub: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 15,
+  },
 });

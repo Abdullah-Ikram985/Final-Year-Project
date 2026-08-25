@@ -68,3 +68,23 @@ exports.getSavedJobs = CheckAsync(async (req, res, next) => {
     },
   });
 });
+
+// Called when a recruiter opens a candidate's profile — increments the
+// candidate's profileView counter. :id is the CandidateProfile._id.
+exports.incrementProfileView = CheckAsync(async (req, res, next) => {
+  const { id } = req.params;
+
+  const candidateProfile = await CandidateProfile.findByIdAndUpdate(
+    id,
+    { $inc: { profileView: 1 } },
+    { new: true },
+  );
+
+  if (!candidateProfile)
+    return next(new AppError('Candidate profile not found', 404));
+
+  res.status(200).json({
+    status: 'success',
+    data: { profileView: candidateProfile.profileView },
+  });
+});

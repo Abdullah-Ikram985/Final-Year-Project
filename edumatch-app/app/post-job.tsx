@@ -17,7 +17,9 @@ import {
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
+  KeyboardTypeOptions,
   Platform,
   Pressable,
   ScrollView,
@@ -84,7 +86,16 @@ export default function PostJobScreen() {
         description: desc,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('jobs');
+      Alert.alert(
+        'Job Submitted Successfully',
+        'Status: Pending Approval\n\nYour job posting has been submitted and is waiting for admin review. It will become live once approved.',
+        [
+          {
+            text: 'View My Jobs',
+            onPress: () => router.replace('/(recruiter)/my-jobs'),
+          },
+        ],
+      );
     } catch (e: any) {
       const msg =
         e?.response?.data?.message || e?.message || 'Failed to post job';
@@ -371,7 +382,7 @@ function Field({
   colors: any;
   Icon?: any;
   last?: boolean;
-  keyboardType?: string;
+  keyboardType?: KeyboardTypeOptions;
 }) {
   return (
     <View

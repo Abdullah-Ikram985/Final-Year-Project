@@ -28,7 +28,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { savedJobServices } from '@/api/services/candidateServices';
-import { recommendedJobs } from '@/api/services/jobServices';
+import { allJobsService } from '@/api/services/jobServices';
 import { useColors } from '@/hooks/useColors';
 
 interface Job {
@@ -166,13 +166,15 @@ export default function JobsScreen() {
         if (mode === 'initial') setLoading(true);
         if (mode === 'refresh') setRefreshing(true);
         setError(null);
-        const res = await recommendedJobs.candidateRecommendedJobs();
+        const res = await allJobsService.getAllJobs();
         const raw = res?.data;
         const list: Job[] = Array.isArray(raw)
           ? raw
-          : Array.isArray(raw?.data)
-            ? raw.data
-            : [];
+          : Array.isArray(raw?.jobs)
+            ? raw.jobs
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : [];
         console.log('[JobsScreen] fetched', list.length, 'jobs');
         setJobs(list);
       } catch (err: any) {
@@ -308,9 +310,9 @@ export default function JobsScreen() {
         style={[styles.header, { paddingTop: topInset + 12 }]}
       >
         <View style={styles.headerDecor} />
-        <Text style={styles.headerTitle}>Job Recommendations</Text>
+        <Text style={styles.headerTitle}>Browse Jobs</Text>
         <Text style={styles.headerSub}>
-          AI-curated matches for your profile
+          All open positions posted by recruiters
         </Text>
         <View style={styles.searchBar}>
           <Search size={18} color='#8b7dc0' />
