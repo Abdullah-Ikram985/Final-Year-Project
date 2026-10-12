@@ -1,14 +1,14 @@
 const { OpenAI } = require('openai');
 
-// ─── Same Pollinations client as your existing code ───────────────────────
-const EMBEDDING_MODEL = 'openai-3-small'; // text-embedding-3-small via Pollinations
+const EMBEDDING_MODEL = 'openai/text-embedding-3-small'; // text-embedding-3-small via Pollinations
+// const EMBEDDING_MODEL = 'openai-3-small'; // text-embedding-3-small via Pollinations
 
 function createPollinationsClient() {
   console.log('EMBEDDING_MODEL', EMBEDDING_MODEL);
   console.log('apiKey', process.env.POLLINATIONS_API_KEY);
   return new OpenAI({
     apiKey:
-      process.env.POLLINATIONS_API_KEY || 'sk_AgUQwN07V2kliWsQHxgnO1XGIL0yJ826',
+      process.env.POLLINATIONS_API_KEY || 'sk_IDbv4byRNmKC8Aqb2CJc22S86Ov9P5FA',
     baseURL: 'https://gen.pollinations.ai/v1',
   });
 }

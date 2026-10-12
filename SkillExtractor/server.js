@@ -29,5 +29,5 @@ mongoose
   .catch((err) => console.error('DB Connection Error ❌', err));
 
 server.listen(8000, '0.0.0.0', () => {
-  console.log('Listening on port 8000');
+  console.log('Listening on port 5000');
 });

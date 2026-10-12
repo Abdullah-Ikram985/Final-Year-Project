@@ -35,6 +35,7 @@ export const fetchUsersSafely = async () => {
 };
 
 export const fetchUserById = async (userId) => {
+  console.log("User ID ",userId)
   const response = await apiClient.get(`users/getUserById/${userId}`);
   return response.data?.data?.user;
 };
